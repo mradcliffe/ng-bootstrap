@@ -10,8 +10,11 @@ import {
   OnDestroy,
   TemplateRef,
   ViewContainerRef,
-  AfterViewInit
+  AfterViewInit,
+  ComponentFactoryResolver,
+  Injector,
 } from '@angular/core';
+import {timer} from 'rxjs';
 
 import {Key} from '../util/key';
 
@@ -373,6 +376,52 @@ describe('ngb-popover', () => {
     });
   });
 
+  describe('advanced functionality', () => {
+
+    beforeEach(() => {
+      TestBed.configureTestingModule({
+        declarations: [TestComponent, TestNestedComponent, TestChildComponent],
+        imports: [NgbPopoverModule],
+        providers: []
+      });
+    });
+
+    it('should open the popover when the popover content has a container with a child component', () => {
+      const fixture = createGenericTestComponent(
+          `
+          <ng-template #t>
+            Hello, {{name}}!
+            <ng-container *ngComponentOutlet="TestChildComponent; injector: injector;"></ng-container>
+          </ng-template>
+          <div [ngbPopover]="t" popoverTitle="Title" style="margin-top: 100px;"></div>`,
+          TestNestedComponent);
+      const directive = fixture.debugElement.query(By.directive(NgbPopover));
+
+      triggerEvent(directive, 'click');
+      fixture.detectChanges();
+
+      const childElement = fixture.nativeElement.querySelector('test-child-cmpt');
+      expect(childElement).not.toBeNull();
+    });
+
+    it('should open the popover when the popover content has a container with a component factory', () => {
+      const fixture = createGenericTestComponent(
+          `
+          <ng-template #t>
+            Hello, {{name}}!
+            <ng-container #popChild></ng-container>
+          </ng-template>
+          <div [ngbPopover]="t" popoverTitle="Title" style="margin-top: 100px;" (shown)="initialize()"></div>`,
+          TestNestedComponent);
+      const directive = fixture.debugElement.query(By.directive(NgbPopover));
+
+      triggerEvent(directive, 'click');
+      fixture.detectChanges();
+
+      const childElement = fixture.nativeElement.querySelector('test-child-cmpt');
+      expect(childElement).not.toBeNull();
+    });
+  });
 
   describe('positioning', () => {
 
@@ -773,4 +822,23 @@ export class TestHooksComponent implements AfterViewInit {
   @ViewChild(NgbPopover, {static: true}) popover;
 
   ngAfterViewInit() { this.popover.open(); }
+}
+
+@Component({selector: 'test-child-cmpt', template: 'Some child content'})
+export class TestChildComponent {
+}
+
+@Component({selector: 'test-nested-cmpt', template: ``, entryComponents: [TestChildComponent]})
+export class TestNestedComponent extends TestComponent {
+  @ViewChild('popChild', {read: ViewContainerRef, static: false}) popoverChildRef: ViewContainerRef;
+
+  constructor(_vcRef: ViewContainerRef, private resolver: ComponentFactoryResolver, public injector: Injector) { super(_vcRef); }
+
+  initialize() {
+    timer(250).subscribe(() => {
+      const componentFactory = this.resolver.resolveComponentFactory(TestChildComponent);
+      const componentRef = componentFactory.create(this.popoverChildRef.injector);
+      this.popoverChildRef.insert(componentRef.hostView);
+    });
+  }
 }
